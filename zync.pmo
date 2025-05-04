@@ -162,7 +162,7 @@ function library:new(props)
 			BackgroundColor3 = color,
 			BorderColor3 = Color3.fromRGB(12, 12, 12),
 			BorderSizePixel = 1,
-			Size = UDim2.new(0,445,0,540),
+			Size = UDim2.new(0,600,0,790),
 			Position = UDim2.new(0.5,0,0.5,0),
 			Parent = screen
 		}
@@ -175,7 +175,7 @@ function library:new(props)
 			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 			BorderColor3 = Color3.fromRGB(12, 12, 12),
 			BorderSizePixel = 1,
-			Size = UDim2.new(5,-5,5,-5),
+			Size = UDim2.new(1,-4,1,-4),
 			Position = UDim2.new(0.5,0,0.5,0),
 			Parent = outline
 		}
@@ -203,7 +203,7 @@ function library:new(props)
 			BorderColor3 = Color3.fromRGB(56, 56, 56),
 			BorderMode = "Inset",
 			BorderSizePixel = 1,
-			Size = UDim2.new(1,-10,1,-25),
+			Size = UDim2.new(1,-5,1,-25),
 			Position = UDim2.new(0.5,0,1,-5),
 			Parent = outline2
 		}
