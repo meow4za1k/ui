@@ -154,29 +154,29 @@ function library:new(props)
         if (check_exploit == "Synapse" and syn.request) then
 	syn.protect_gui(screen)
         end
-	-- 1
-	local outline = utility.new(
-		"Frame",
-		{
-			AnchorPoint = Vector2.new(0.5,0.5),
-			BackgroundColor3 = color,
-			BorderColor3 = Color3.fromRGB(12, 12, 12),
-			BorderSizePixel = 1,
-			Size = UDim2.new(0,600,0,790),
-			Position = UDim2.new(0.5,0,0.5,0),
-			Parent = screen
-		}
-	)
+    -- filepath: untitled:Untitled-2
+    local outline = utility.new(
+        "Frame",
+        {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = color,
+            BorderColor3 = Color3.fromRGB(12, 12, 12),
+            BorderSizePixel = 1,
+            Size = UDim2.new(0, 400, 0, 600), -- Reduced size
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            Parent = screen
+        }
+    )
 	-- 2
 	local outline2 = utility.new(
 		"Frame",
 		{
-			AnchorPoint = Vector2.new(0.5,0.5),
+			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 			BorderColor3 = Color3.fromRGB(12, 12, 12),
 			BorderSizePixel = 1,
-			Size = UDim2.new(1,-4,1,-4),
-			Position = UDim2.new(0.5,0,0.5,0),
+			Size = UDim2.new(1, -4, 1, -4), -- Adjusted size
+			Position = UDim2.new(0.5, 0, 0.5, 0),
 			Parent = outline
 		}
 	)
@@ -203,7 +203,7 @@ function library:new(props)
 			BorderColor3 = Color3.fromRGB(56, 56, 56),
 			BorderMode = "Inset",
 			BorderSizePixel = 1,
-			Size = UDim2.new(1,-5,1,-25),
+			Size = UDim2.new(1,-10,1,-25),
 			Position = UDim2.new(0.5,0,1,-5),
 			Parent = outline2
 		}
@@ -233,23 +233,23 @@ function library:new(props)
 			Parent = main
 		}
 	)
-	--
-	local titletext = utility.new(
-		"TextLabel",
-		{
-			AnchorPoint = Vector2.new(0.5,0),
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1,-10,1,0),
-			Position = UDim2.new(0.5,0,0,0),
-			Font = font,
-			Text = name,
-			TextColor3 = Color3.fromRGB(255,255,255),
-			TextXAlignment = "Left",
-			TextSize = textsize,
-			TextStrokeTransparency = 0,
-			Parent = title
-		}
-	)
+    -- filepath: untitled:Untitled-2
+    local titletext = utility.new(
+        "TextLabel",
+        {
+            AnchorPoint = Vector2.new(0.5, 0),
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -10, 0, 15), -- Reduced height
+            Position = UDim2.new(0.5, 0, 0, 0),
+            Font = font,
+            Text = name,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            TextXAlignment = "Left",
+            TextSize = textsize - 2, -- Reduced text size
+            TextStrokeTransparency = 0,
+            Parent = title
+        }
+    )
 	-- 6
 	local holder = utility.new(
 		"Frame",
