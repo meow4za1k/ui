@@ -150,35 +150,33 @@ function library:new(props)
 			Parent = cre
 		}
 	)
-	--
         if (check_exploit == "Synapse" and syn.request) then
 	syn.protect_gui(screen)
         end
-	-- filepath: untitled:Untitled-2
-	local outline = utility.new(
-	    "Frame",
-	    {
-	        AnchorPoint = Vector2.new(0.5, 0.5),
-	        BackgroundColor3 = color,
-	        BorderColor3 = Color3.fromRGB(12, 12, 12),
-	        BorderSizePixel = 1,
-	        Size = UDim2.new(0, 600, 0, 600), -- Increased width
-	        Position = UDim2.new(0.5, 0, 0.5, 0),
-	        Parent = screen
-	    }
+    local outline = utility.new(
+		"Frame",
+		{
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = color,
+			BorderColor3 = Color3.fromRGB(12, 12, 12),
+			BorderSizePixel = 1,
+			Size = UDim2.new(0, 700, 0, 600), -- Increased width
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			Parent = screen
+		}
 	)
 	-- filepath: untitled:Untitled-2
 	local outline2 = utility.new(
-	    "Frame",
-	    {
-	        AnchorPoint = Vector2.new(0.5, 0.5),
-	        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-	        BorderColor3 = Color3.fromRGB(12, 12, 12),
-	        BorderSizePixel = 1,
-	        Size = UDim2.new(1, -4, 1, -4), -- Adjusted size
-	        Position = UDim2.new(0.5, 0, 0.5, 0),
-	        Parent = outline
-	    }
+		"Frame",
+		{
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BorderColor3 = Color3.fromRGB(12, 12, 12),
+			BorderSizePixel = 1,
+			Size = UDim2.new(1, -4, 1, -4), -- Adjusted size to match new width
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			Parent = outline
+		}
 	)
 	-- 3
 	local indent = utility.new(
