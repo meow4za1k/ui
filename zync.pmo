@@ -153,18 +153,18 @@ function library:new(props)
         if (check_exploit == "Synapse" and syn.request) then
 	syn.protect_gui(screen)
         end
-	local outline = utility.new(
-		"Frame",
-		{
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundColor3 = color,
-			BorderColor3 = Color3.fromRGB(12, 12, 12),
-			BorderSizePixel = 1,
-			Size = UDim2.new(0, 550, 0, 600), -- Reduced width to 600
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			Parent = screen
-		}
-	)
+		local outline = utility.new(
+			"Frame",
+			{
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = color,
+				BorderColor3 = Color3.fromRGB(12, 12, 12),
+				BorderSizePixel = 1,
+				Size = UDim2.new(0, 550, 0, 600), -- Updated size
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				Parent = screen
+			}
+		)
 	local outline2 = utility.new(
 		"Frame",
 		{
