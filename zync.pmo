@@ -1,1040 +1,894 @@
--- Zync.pmo UI Library
--- A minimalist gaming menu UI with tab system and script toggles
-
--- Services
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
-
--- Create the library table
 local ZyncLib = {}
-ZyncLib.__index = ZyncLib
 
--- Constants
-local HIGHLIGHT_COLOR = Color3.fromRGB(81, 81, 189)
-local DEFAULT_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
-local UNSELECTED_COLOR = Color3.fromRGB(200, 200, 200)
-local KEYBIND_COLOR = Color3.fromRGB(150, 150, 150)
-local DROPDOWN_BG_COLOR = Color3.fromRGB(30, 30, 30)
-
--- Sound IDs
-local SOUND_IDS = {
-    hover = "rbxassetid://4681278859", -- Soft hover sound
-    click = "rbxassetid://5942420465", -- Light click sound
-    toggleOn = "rbxassetid://6042583705", -- Toggle on sound
-    toggleOff = "rbxassetid://6042583723", -- Toggle off sound
-    nav = "rbxassetid://255473262" -- Navigation sound
-}
-
--- Create a new instance of the library
-function ZyncLib.new(title)
-    local self = setmetatable({}, ZyncLib)
+function ZyncLib:Create(title, iconId)
+    local lib = {}
+    local Players = game:GetService("Players")
+    local UserInputService = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+    local Player = Players.LocalPlayer
     
-    -- Library properties
-    self.title = title or "Zync.pmo"
-    self.width = 200
-    self.tabs = {}
-    self.activeTab = nil
-    self.commonKeybinds = {"F", "G", "H", "J", "K", "Z", "X", "C", "V", "B", "1", "2", "3", "4", "5"}
-    
-    -- UI state
-    self.state = {
-        menuEnabled = true,
-        minimized = false,
-        selectedTab = 1,
-        selectedOption = 0,
-        isDragging = false,
-        dragOffset = nil,
-        expandedTabs = {},
-        keybindOpen = false,
-        lastHoveredElement = nil
+    local colors = {
+        background = Color3.fromRGB(10, 10, 10),
+        purple = Color3.fromRGB(200, 176, 255),
+        white = Color3.fromRGB(255, 255, 255),
+        gray = Color3.fromRGB(150, 150, 150),
+        separator = Color3.fromRGB(40, 40, 40)
     }
     
-    -- Script manager for toggle functionality
-    self.scriptManager = {
-        running = {}
+    local sounds = {
+        hover = "rbxassetid://6333178510",
+        click = "rbxassetid://6333641236",
+        toggle = "rbxassetid://6333641464",
+        startup = "rbxassetid://6031094677",
+        minimize = "rbxassetid://6333712037"
     }
     
-    -- Create the sound system
-    self:InitSounds()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "Zync.pmo"
+    ScreenGui.ResetOnSpawn = false
     
-    -- Create the UI
-    self:CreateUI()
-    
-    return self
-end
-
--- Initialize sound system
-function ZyncLib:InitSounds()
-    -- Create sound group
-    self.soundGroup = Instance.new("SoundGroup")
-    self.soundGroup.Name = "ZyncSounds"
-    self.soundGroup.Parent = SoundService
-    
-    -- Create sound objects
-    self.sounds = {}
-    
-    for name, id in pairs(SOUND_IDS) do
-        local sound = Instance.new("Sound")
-        sound.Name = name .. "Sound"
-        sound.SoundId = id
-        sound.Volume = (name == "hover") and 0.2 or 0.3
-        sound.PlayOnRemove = false
-        sound.SoundGroup = self.soundGroup
-        sound.Parent = self.soundGroup
-        
-        self.sounds[name] = sound
-    end
-end
-
--- Play a sound with option to clone (for overlapping sounds)
-function ZyncLib:PlaySound(name)
-    local sound = self.sounds[name]
-    if not sound then return end
-    
-    -- Clone the sound to allow overlapping
-    local soundClone = sound:Clone()
-    soundClone.Parent = self.soundGroup
-    soundClone:Play()
-    
-    -- Auto-cleanup
-    soundClone.Ended:Connect(function()
-        soundClone:Destroy()
-    end)
-end
-
--- Create the main UI elements
-function ZyncLib:CreateUI()
-    -- Create ScreenGui
-    self.screenGui = Instance.new("ScreenGui")
-    self.screenGui.Name = "ZyncMenuGui"
-    self.screenGui.ResetOnSpawn = false
-    self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    self.screenGui.DisplayOrder = 999
-    self.screenGui.IgnoreGuiInset = true
-    
-    -- Try to parent to CoreGui, fallback to PlayerGui
     pcall(function()
-        if RunService:IsStudio() then
-            self.screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+        if syn and syn.protect_gui then
+            syn.protect_gui(ScreenGui)
+            ScreenGui.Parent = game:GetService("CoreGui")
+        elseif gethui then
+            ScreenGui.Parent = gethui()
         else
-            self.screenGui.Parent = game.CoreGui
+            ScreenGui.Parent = game:GetService("CoreGui")
         end
     end)
     
-    if not self.screenGui.Parent then
-        self.screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    if not ScreenGui.Parent then
+        ScreenGui.Parent = Player:WaitForChild("PlayerGui")
     end
     
-    -- Create glow container
-    self.glowContainer = Instance.new("Frame")
-    self.glowContainer.Name = "GlowContainer"
-    self.glowContainer.BackgroundTransparency = 1
-    self.glowContainer.BorderSizePixel = 0
-    self.glowContainer.Position = UDim2.new(0, 6, 0, 6)
-    self.glowContainer.Size = UDim2.new(0, self.width + 8, 0, 208)
-    self.glowContainer.ZIndex = 998
-    self.glowContainer.Parent = self.screenGui
-    
-    -- Create black glow effect
-    for i = 1, 3 do
-        local shadowLayer = Instance.new("Frame")
-        shadowLayer.Name = "ShadowLayer_" .. i
-        shadowLayer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadowLayer.BorderSizePixel = 0
-        shadowLayer.Position = UDim2.new(0, -i, 0, -i)
-        shadowLayer.Size = UDim2.new(1, i*2, 1, i*2)
-        shadowLayer.BackgroundTransparency = 0.7 + (i * 0.1)
-        shadowLayer.ZIndex = 997 - i
-        shadowLayer.Parent = self.glowContainer
+    local function createSound(id, volume)
+        local sound = Instance.new("Sound")
+        sound.SoundId = id
+        sound.Volume = volume or 0.5
+        sound.Parent = ScreenGui
+        return sound
     end
     
-    -- Create main frame
-    self.mainFrame = Instance.new("Frame")
-    self.mainFrame.Name = "MainFrame"
-    self.mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    self.mainFrame.BackgroundTransparency = 0.2
-    self.mainFrame.BorderSizePixel = 0
-    self.mainFrame.Position = UDim2.new(0, 10, 0, 10)
-    self.mainFrame.Size = UDim2.new(0, self.width, 0, 200)
-    self.mainFrame.ZIndex = 999
-    self.mainFrame.Parent = self.screenGui
+    local hoverSound = createSound(sounds.hover, 0.15)
+    local clickSound = createSound(sounds.click, 0.2)
+    local toggleSound = createSound(sounds.toggle, 0.3)
+    local startupSound = createSound(sounds.startup, 0.4)
+    local minimizeSound = createSound(sounds.minimize, 0.3)
     
-    -- Create drag handle
-    self.dragHandle = Instance.new("Frame")
-    self.dragHandle.Name = "DragHandle"
-    self.dragHandle.BackgroundTransparency = 1
-    self.dragHandle.Position = UDim2.new(0, 0, 0, 0)
-    self.dragHandle.Size = UDim2.new(1, 0, 0, 20)
-    self.dragHandle.ZIndex = 1000
-    self.dragHandle.Parent = self.mainFrame
+    local Background = Instance.new("Frame")
+    Background.Name = "Background"
+    Background.Size = UDim2.new(0, 250, 0, 100) -- Initial small size, will auto-scale
+    Background.Position = UDim2.new(0.02, 0, 0.3, 0)
+    Background.BackgroundColor3 = colors.background
+    Background.BackgroundTransparency = 1
+    Background.BorderSizePixel = 0
+    Background.ClipsDescendants = true
+    Background.Parent = ScreenGui
     
-    -- Create title
-    self.titleLabel = Instance.new("TextLabel")
-    self.titleLabel.Name = "TitleLabel"
-    self.titleLabel.BackgroundTransparency = 1
-    self.titleLabel.Position = UDim2.new(0, 5, 0, 5)
-    self.titleLabel.Size = UDim2.new(1, -10, 0, 15)
-    self.titleLabel.Font = Enum.Font.RobotoMono
-    self.titleLabel.Text = self.title
-    self.titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.titleLabel.TextSize = 14
-    self.titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    self.titleLabel.ZIndex = 1000
-    self.titleLabel.Parent = self.mainFrame
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 2)
+    UICorner.Parent = Background
     
-    -- Create separator
-    self.separator = Instance.new("Frame")
-    self.separator.Name = "Separator"
-    self.separator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    self.separator.BorderSizePixel = 0
-    self.separator.Position = UDim2.new(0, 5, 0, 20)
-    self.separator.Size = UDim2.new(1, -10, 0, 1)
-    self.separator.ZIndex = 1000
-    self.separator.Parent = self.mainFrame
+    local OuterGlow = Instance.new("ImageLabel")
+    OuterGlow.Name = "OuterGlow"
+    OuterGlow.BackgroundTransparency = 1
+    OuterGlow.Image = "rbxassetid://5028857084"
+    OuterGlow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    OuterGlow.ImageTransparency = 0.6
+    OuterGlow.Size = UDim2.new(1, 30, 1, 30)
+    OuterGlow.Position = UDim2.new(0, -15, 0, -15)
+    OuterGlow.ZIndex = -1
+    OuterGlow.Parent = Background
     
-    -- Create menu container
-    self.menuContainer = Instance.new("ScrollingFrame")
-    self.menuContainer.Name = "MenuContainer"
-    self.menuContainer.BackgroundTransparency = 1
-    self.menuContainer.Position = UDim2.new(0, 5, 0, 25)
-    self.menuContainer.Size = UDim2.new(1, -10, 1, -30)
-    self.menuContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
-    self.menuContainer.ScrollBarThickness = 0
-    self.menuContainer.ScrollingDirection = Enum.ScrollingDirection.Y
-    self.menuContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    self.menuContainer.ZIndex = 1000
-    self.menuContainer.Parent = self.mainFrame
+    local TitleContainer = Instance.new("Frame")
+    TitleContainer.Name = "TitleContainer"
+    TitleContainer.Size = UDim2.new(1, 0, 0, 25)
+    TitleContainer.BackgroundTransparency = 1
+    TitleContainer.Parent = Background
     
-    -- Create keybind dropdown (initially hidden)
-    self.keybindDropdown = Instance.new("Frame")
-    self.keybindDropdown.Name = "KeybindDropdown"
-    self.keybindDropdown.BackgroundColor3 = DROPDOWN_BG_COLOR
-    self.keybindDropdown.BorderSizePixel = 0
-    self.keybindDropdown.Position = UDim2.new(0, 0, 0, 0)
-    self.keybindDropdown.Size = UDim2.new(0, 120, 0, 100)
-    self.keybindDropdown.Visible = false
-    self.keybindDropdown.ZIndex = 1100
-    self.keybindDropdown.Parent = self.screenGui
+    local ZyncLabel = Instance.new("TextLabel")
+    ZyncLabel.Name = "ZyncLabel"
+    ZyncLabel.Position = UDim2.new(0, 10, 0, 5)
+    ZyncLabel.Size = UDim2.new(0, 40, 0, 20)
+    ZyncLabel.BackgroundTransparency = 1
+    ZyncLabel.Font = Enum.Font.RobotoMono
+    ZyncLabel.TextSize = 14
+    ZyncLabel.Text = "Zync"
+    ZyncLabel.TextColor3 = colors.white
+    ZyncLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ZyncLabel.TextTransparency = 1
+    ZyncLabel.Parent = TitleContainer
     
-    -- Set up input handlers and animation
-    self:SetupInputHandlers()
-    self:StartShadowAnimation()
-end
-
--- Start shadow animation
-function ZyncLib:StartShadowAnimation()
-    spawn(function()
-        local pulseAmount = 0.05
-        local pulseSpeed = 0.5
-        local counter = 0
-        
-        while self.screenGui and self.screenGui.Parent and wait(0.03) do
-            counter = counter + 0.05
-            local pulseFactor = (math.sin(counter * pulseSpeed) + 1) / 2 * pulseAmount
-            
-            for i, layer in ipairs(self.glowContainer:GetChildren()) do
-                if not self.state.isDragging and not self.state.minimized then
-                    layer.BackgroundTransparency = 0.7 + (i * 0.1) - pulseFactor
-                end
+    local PmoLabel = Instance.new("TextLabel")
+    PmoLabel.Name = "PmoLabel"
+    PmoLabel.Position = UDim2.new(0, 40, 0, 5)
+    PmoLabel.Size = UDim2.new(0, 40, 0, 20)
+    PmoLabel.BackgroundTransparency = 1
+    PmoLabel.Font = Enum.Font.RobotoMono
+    PmoLabel.TextSize = 14
+    PmoLabel.Text = ".pmo"
+    PmoLabel.TextColor3 = colors.purple
+    PmoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PmoLabel.TextTransparency = 1
+    PmoLabel.Parent = TitleContainer
+    
+    local Logo
+    if iconId and tonumber(iconId) then
+        Logo = Instance.new("ImageLabel")
+        Logo.Name = "Logo"
+        Logo.Size = UDim2.new(0, 20, 0, 20)
+        Logo.Position = UDim2.new(1, -30, 0, 2)
+        Logo.BackgroundTransparency = 1
+        Logo.Image = "rbxassetid://" .. iconId
+        Logo.ImageTransparency = 1
+        Logo.Parent = TitleContainer
+    end
+    
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Name = "ContentContainer"
+    ContentContainer.Size = UDim2.new(1, 0, 1, -25)
+    ContentContainer.Position = UDim2.new(0, 0, 0, 25)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.Parent = Background
+    
+    local function playSound(sound)
+        pcall(function()
+            if sound then 
+                sound:Play()
             end
-        end
-    end)
-end
-
--- Set up input handlers
-function ZyncLib:SetupInputHandlers()
-    -- Make UI draggable
-    self.dragHandle.InputBegan:Connect(function(input)
+        end)
+    end
+    
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function updateDrag(input)
+        if not dragging then return end
+        local delta = input.Position - dragStart
+        Background.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    Background.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.state.isDragging = true
-            self.state.dragOffset = Vector2.new(
-                input.Position.X - self.mainFrame.AbsolutePosition.X,
-                input.Position.Y - self.mainFrame.AbsolutePosition.Y
-            )
-            self:PlaySound("click")
+            dragging = true
+            dragStart = input.Position
+            startPos = Background.Position
+            TweenService:Create(Background, TweenInfo.new(0.2), {
+                BackgroundTransparency = 0.2,
+                BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+            }):Play()
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    TweenService:Create(Background, TweenInfo.new(0.2), {
+                        BackgroundTransparency = 0,
+                        BackgroundColor3 = colors.background
+                    }):Play()
+                end
+            end)
         end
     end)
     
-    self.dragHandle.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.state.isDragging = false
-            self.state.dragOffset = nil
+    Background.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
         end
     end)
     
-    -- Mouse movement for dragging
     UserInputService.InputChanged:Connect(function(input)
-        if self.state.isDragging and self.state.dragOffset and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local newPosition = UDim2.new(
-                0, 
-                input.Position.X - self.state.dragOffset.X,
-                0, 
-                input.Position.Y - self.state.dragOffset.Y
-            )
-            self.mainFrame.Position = newPosition
-            self.glowContainer.Position = UDim2.new(
-                0,
-                newPosition.X.Offset - 4,
-                0,
-                newPosition.Y.Offset - 4
-            )
+        if input == dragInput and dragging then
+            updateDrag(input)
         end
     end)
     
-    -- Set up title double-click for minimize
-    self.titleLabel.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            -- Check for double click (less than 0.5 seconds between clicks)
-            if self.titleLabel.LastClickTime and tick() - self.titleLabel.LastClickTime < 0.5 then
-                self:ToggleMinimized()
-                self.titleLabel.LastClickTime = nil
-            else
-                self.titleLabel.LastClickTime = tick()
-                self:PlaySound("click")
-            end
-        end
-    end)
+    local visible = true
+    local toggleConnection
     
-    -- Add hover sound to title
-    self.titleLabel.MouseEnter:Connect(function()
-        if self.state.lastHoveredElement ~= self.titleLabel then
-            self:PlaySound("hover")
-            self.state.lastHoveredElement = self.titleLabel
-        end
-    end)
-    
-    -- Set up keyboard navigation
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed or not self.state.menuEnabled then return end
-        
-        if input.KeyCode == Enum.KeyCode.Home then
-            -- Toggle menu visibility
-            self:ToggleVisibility()
-        elseif input.KeyCode == Enum.KeyCode.Up then
-            -- Move selection up
-            self:Navigate(-1)
-        elseif input.KeyCode == Enum.KeyCode.Down then
-            -- Move selection down
-            self:Navigate(1)
-        elseif input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.Space then
-            -- Select current option (both Enter and Space keys work)
-            self:HandleSelect()
-        end
-        
-        -- Check for keybind press
-        for tabIndex, tab in ipairs(self.tabs) do
-            for optionIndex, option in ipairs(tab.options) do
-                if option.keybind then
-                    local keyName = string.upper(option.keybind)
-                    local keyCode = Enum.KeyCode[keyName]
-                    if keyCode and input.KeyCode == keyCode then
-                        self.state.selectedTab = tabIndex
-                        self.state.selectedOption = optionIndex
-                        self:CycleOptionValue(tabIndex, optionIndex)
-                        self:Render()
+    toggleConnection = UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            visible = not visible
+            if visible then
+                playSound(toggleSound)
+                Background.Visible = true
+                TweenService:Create(Background, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    BackgroundTransparency = 0
+                }):Play()
+                for _, child in pairs(Background:GetDescendants()) do
+                    if child:IsA("TextLabel") then
+                        TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                            TextTransparency = 0
+                        }):Play()
+                    elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then
+                        TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                            ImageTransparency = 0
+                        }):Play()
                     end
                 end
+            else
+                playSound(minimizeSound)
+                local fadeTween = TweenService:Create(Background, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    BackgroundTransparency = 1
+                })
+                fadeTween:Play()
+                for _, child in pairs(Background:GetDescendants()) do
+                    if child:IsA("TextLabel") then
+                        TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                            TextTransparency = 1
+                        }):Play()
+                    elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then
+                        TweenService:Create(child, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                            ImageTransparency = 1
+                        }):Play()
+                    end
+                end
+                fadeTween.Completed:Connect(function()
+                    if not visible then
+                        Background.Visible = false
+                    end
+                end)
             end
         end
     end)
     
-    -- Set up mouse wheel scrolling
-    UserInputService.InputChanged:Connect(function(input, gameProcessed)
-        if gameProcessed or not self.state.menuEnabled or self.state.minimized then return end
-        
-        if input.UserInputType == Enum.UserInputType.MouseWheel then
-            if input.Position.Z > 0 then
-                -- Scroll up
-                self:Navigate(-1)
+    lib.sections = {}
+    
+    local function createSeparator(position, parent)
+        local separator = Instance.new("Frame")
+        separator.Name = "Separator"
+        separator.Size = UDim2.new(1, -20, 0, 1)
+        separator.Position = position
+        separator.BackgroundColor3 = colors.separator
+        separator.BorderSizePixel = 0
+        separator.BackgroundTransparency = 1
+        separator.Parent = parent or ContentContainer
+        return separator
+    end
+    
+    function lib:AddSection(name)
+        local sectionIndex = #self.sections + 1
+        local sectionData = {}
+        local yPos = 5
+        for _, section in pairs(self.sections) do
+            if section.container.Visible then
+                yPos = yPos + section.container.Size.Y.Offset
             else
-                -- Scroll down
-                self:Navigate(1)
+                yPos = yPos + 25
             end
         end
-    end)
-end
-
--- Script Manager Methods
-function ZyncLib.scriptManager:RunScript(id, onFn, offFn)
-    if self.running[id] then
-        self:StopScript(id)
-        return false
-    else
-        -- Store script data
-        self.running[id] = {
-            connections = {},
-            cleanupFns = {},
-            offFn = offFn
-        }
         
-        -- Execute the script
-        if typeof(onFn) == "function" then
-            local env = getfenv(onFn)
-            
-            -- Add helper functions to environment
-            env.RegisterConnection = function(conn)
-                table.insert(self.running[id].connections, conn)
-                return conn
-            end
-            
-            env.RegisterCleanup = function(fn)
-                table.insert(self.running[id].cleanupFns, fn)
-                return fn
-            end
-            
-            env.CreateLoop = function(interval, fn)
-                local running = true
-                local conn
+        local sectionContainer = Instance.new("Frame")
+        sectionContainer.Name = name .. "Section"
+        sectionContainer.Size = UDim2.new(1, 0, 0, 25)
+        sectionContainer.Position = UDim2.new(0, 0, 0, yPos)
+        sectionContainer.BackgroundTransparency = 1
+        sectionContainer.Parent = ContentContainer
+        
+        local header = Instance.new("TextButton")
+        header.Name = "Header"
+        header.Size = UDim2.new(1, 0, 0, 25)
+        header.BackgroundTransparency = 1
+        header.TextColor3 = colors.purple
+        header.Font = Enum.Font.RobotoMono
+        header.TextSize = 14
+        header.Text = ">> " .. name
+        header.TextTransparency = 1
+        header.TextXAlignment = Enum.TextXAlignment.Left
+        header.Position = UDim2.new(0, 10, 0, 0)
+        header.Parent = sectionContainer
+        
+        local headerOrigSize = header.Size
+        header.MouseEnter:Connect(function()
+            playSound(hoverSound)
+            TweenService:Create(header, TweenInfo.new(0.15), {
+                Size = UDim2.new(headerOrigSize.X.Scale * 1.02, headerOrigSize.X.Offset * 1.02, 
+                                  headerOrigSize.Y.Scale * 1.05, headerOrigSize.Y.Offset * 1.05),
+                TextColor3 = Color3.fromRGB(220, 196, 255)
+            }):Play()
+        end)
+        
+        header.MouseLeave:Connect(function()
+            TweenService:Create(header, TweenInfo.new(0.15), {
+                Size = headerOrigSize,
+                TextColor3 = colors.purple
+            }):Play()
+        end)
+        
+        header.MouseButton1Down:Connect(function()
+            playSound(clickSound)
+        end)
+        
+        local separator = createSeparator(UDim2.new(0, 10, 0, 25), sectionContainer)
+        
+        local itemsContainer = Instance.new("Frame")
+        itemsContainer.Name = "Items"
+        itemsContainer.Size = UDim2.new(1, 0, 0, 0)
+        itemsContainer.Position = UDim2.new(0, 0, 0, 26)
+        itemsContainer.BackgroundTransparency = 1
+        itemsContainer.Visible = true
+        itemsContainer.Parent = sectionContainer
+        
+        local expanded = true
+        header.MouseButton1Click:Connect(function()
+            expanded = not expanded
+            if expanded then
+                playSound(toggleSound)
+                itemsContainer.Visible = true
+                local numItems = #sectionData.items
+                local targetSize = UDim2.new(1, 0, 0, numItems * 22)
+                TweenService:Create(itemsContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Size = targetSize
+                }):Play()
                 
-                if interval < 0.01 then
-                    conn = RunService.RenderStepped:Connect(function(dt)
-                        if running then fn(dt) end
+                local sectionTargetSize = UDim2.new(1, 0, 0, 26 + (numItems * 22))
+                TweenService:Create(sectionContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Size = sectionTargetSize
+                }):Play()
+                
+                header.Text = ">> " .. name
+            else
+                playSound(minimizeSound)
+                TweenService:Create(sectionContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(1, 0, 0, 25)
+                }):Play()
+                
+                task.delay(0.3, function()
+                    if not expanded then
+                        itemsContainer.Visible = false
+                    end
+                end)
+                
+                header.Text = "> " .. name
+            end
+            
+            task.spawn(function()
+                self:UpdateSectionPositions(true)
+            end)
+        end)
+        
+        sectionData.items = {}
+        sectionData.container = sectionContainer
+        sectionData.itemsContainer = itemsContainer
+        sectionData.expanded = expanded
+        
+        function sectionData:AddToggle(name, default)
+            local toggle = Instance.new("Frame")
+            toggle.Name = name:gsub("[^%w]", "") .. "Toggle"
+            toggle.Size = UDim2.new(1, 0, 0, 22)
+            toggle.Position = UDim2.new(0, 0, 0, #self.items * 22)
+            toggle.BackgroundTransparency = 1
+            toggle.Parent = self.itemsContainer
+            
+            local isOn = default or false
+            
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.Size = UDim2.new(1, -70, 1, 0)
+            label.BackgroundTransparency = 1
+            label.TextColor3 = colors.white
+            label.Font = Enum.Font.RobotoMono
+            label.TextSize = 14
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Position = UDim2.new(0, 20, 0, 0)
+            label.TextTransparency = 1
+            
+            -- Format for toggles
+            local baseName
+            if string.find(name, ">>") then
+                baseName = name:gsub(">>.*$", "")
+                label.Text = baseName
+            else
+                baseName = name
+                label.Text = name
+            end
+            
+            label.Parent = toggle
+            
+            -- Status text with color change
+            local statusText = Instance.new("TextLabel")
+            statusText.Name = "Status"
+            statusText.Size = UDim2.new(0, 40, 1, 0)
+            statusText.Position = UDim2.new(1, -50, 0, 0)
+            statusText.BackgroundTransparency = 1
+            statusText.Font = Enum.Font.RobotoMono
+            statusText.TextSize = 14
+            statusText.Text = isOn and "ON" or "OFF"
+            statusText.TextColor3 = isOn and colors.purple or colors.white
+            statusText.TextTransparency = 1
+            statusText.Parent = toggle
+            
+            local toggleButton = Instance.new("TextButton")
+            toggleButton.Name = "ToggleButton"
+            toggleButton.Size = UDim2.new(1, 0, 1, 0)
+            toggleButton.BackgroundTransparency = 1
+            toggleButton.Text = ""
+            toggleButton.ZIndex = 2
+            toggleButton.Parent = toggle
+            
+            local toggleOrigSize = toggle.Size
+            toggle.MouseEnter:Connect(function()
+                playSound(hoverSound)
+                TweenService:Create(toggle, TweenInfo.new(0.15), {
+                    Size = UDim2.new(toggleOrigSize.X.Scale * 1.02, toggleOrigSize.X.Offset * 1.02, 
+                                     toggleOrigSize.Y.Scale * 1.05, toggleOrigSize.Y.Offset * 1.05),
+                    BackgroundTransparency = 0.9
+                }):Play()
+                TweenService:Create(label, TweenInfo.new(0.15), {
+                    TextColor3 = Color3.fromRGB(220, 220, 220)
+                }):Play()
+            end)
+            
+            toggle.MouseLeave:Connect(function()
+                TweenService:Create(toggle, TweenInfo.new(0.15), {
+                    Size = toggleOrigSize,
+                    BackgroundTransparency = 1
+                }):Play()
+                TweenService:Create(label, TweenInfo.new(0.15), {
+                    TextColor3 = colors.white
+                }):Play()
+            end)
+            
+            toggleButton.MouseButton1Click:Connect(function()
+                playSound(clickSound)
+                isOn = not isOn
+                playSound(toggleSound)
+                
+                -- Update status text
+                statusText.Text = isOn and "ON" or "OFF"
+                TweenService:Create(statusText, TweenInfo.new(0.2), {
+                    TextColor3 = isOn and colors.purple or colors.white
+                }):Play()
+                
+                if self.callback then
+                    task.spawn(function()
+                        self.callback(baseName, isOn)
                     end)
+                end
+            end)
+            
+            table.insert(self.items, toggle)
+            
+            local newSize = UDim2.new(1, 0, 0, #self.items * 22)
+            TweenService:Create(self.itemsContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = newSize
+            }):Play()
+            
+            if self.expanded then
+                local containerNewSize = UDim2.new(1, 0, 0, 26 + (#self.items * 22))
+                TweenService:Create(self.container, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Size = containerNewSize
+                }):Play()
+            end
+            
+            task.spawn(function()
+                lib:UpdateSectionPositions(true)
+            end)
+            
+            return {
+                SetState = function(state)
+                    isOn = state
+                    statusText.Text = isOn and "ON" or "OFF"
+                    statusText.TextColor3 = isOn and colors.purple or colors.white
+                    return isOn
+                end,
+                GetState = function()
+                    return isOn
+                end
+            }
+        end
+        
+        function sectionData:AddSelector(name, options, default)
+            local selector = Instance.new("Frame")
+            selector.Name = name:gsub("[^%w]", "") .. "Selector"
+            selector.Size = UDim2.new(1, 0, 0, 22)
+            selector.Position = UDim2.new(0, 0, 0, #self.items * 22)
+            selector.BackgroundTransparency = 1
+            selector.Parent = self.itemsContainer
+            
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.Size = UDim2.new(0.6, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.TextColor3 = colors.white
+            label.Font = Enum.Font.RobotoMono
+            label.TextSize = 14
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Position = UDim2.new(0, 20, 0, 0)
+            label.Text = name
+            label.TextTransparency = 1
+            label.Parent = selector
+            
+            local currentOption = default or options[1]
+            
+            local dropdownButton = Instance.new("TextButton")
+            dropdownButton.Name = "DropdownButton"
+            dropdownButton.Size = UDim2.new(0.4, -10, 0, 18)
+            dropdownButton.Position = UDim2.new(0.6, 0, 0.5, -9)
+            dropdownButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            dropdownButton.BorderSizePixel = 0
+            dropdownButton.TextColor3 = colors.white
+            dropdownButton.Font = Enum.Font.RobotoMono
+            dropdownButton.TextSize = 12
+            dropdownButton.Text = currentOption
+            dropdownButton.TextTransparency = 1
+            dropdownButton.Parent = selector
+            
+            local UICornerDropdown = Instance.new("UICorner")
+            UICornerDropdown.CornerRadius = UDim.new(0, 2)
+            UICornerDropdown.Parent = dropdownButton
+            
+            -- Creating a separate frame for dropdown that doesn't push other items
+            local dropdownFrame = Instance.new("Frame")
+            dropdownFrame.Name = "DropdownFrame"
+            dropdownFrame.Size = UDim2.new(0.4, -10, 0, 0)
+            dropdownFrame.Position = UDim2.new(0.6, 0, 1, 0)
+            dropdownFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            dropdownFrame.BorderSizePixel = 0
+            dropdownFrame.ZIndex = 10
+            dropdownFrame.Visible = false
+            dropdownFrame.Parent = selector
+            
+            local UICornerDropdownFrame = Instance.new("UICorner")
+            UICornerDropdownFrame.CornerRadius = UDim.new(0, 2)
+            UICornerDropdownFrame.Parent = dropdownFrame
+            
+            for i, option in ipairs(options) do
+                local optionButton = Instance.new("TextButton")
+                optionButton.Name = option .. "Option"
+                optionButton.Size = UDim2.new(1, 0, 0, 18)
+                optionButton.Position = UDim2.new(0, 0, 0, (i-1) * 18)
+                optionButton.BackgroundTransparency = 1
+                optionButton.TextColor3 = colors.white
+                optionButton.Font = Enum.Font.RobotoMono
+                optionButton.TextSize = 12
+                optionButton.Text = option
+                optionButton.ZIndex = 11
+                optionButton.Parent = dropdownFrame
+                
+                optionButton.MouseEnter:Connect(function()
+                    playSound(hoverSound)
+                    TweenService:Create(optionButton, TweenInfo.new(0.1), {
+                        BackgroundTransparency = 0.8,
+                        BackgroundColor3 = colors.purple
+                    }):Play()
+                end)
+                
+                optionButton.MouseLeave:Connect(function()
+                    TweenService:Create(optionButton, TweenInfo.new(0.1), {
+                        BackgroundTransparency = 1
+                    }):Play()
+                end)
+                
+                optionButton.MouseButton1Click:Connect(function()
+                    playSound(clickSound)
+                    currentOption = option
+                    dropdownButton.Text = option
+                    
+                    TweenService:Create(dropdownFrame, TweenInfo.new(0.2), {
+                        Size = UDim2.new(0.4, -10, 0, 0)
+                    }):Play()
+                    
+                    task.delay(0.2, function()
+                        dropdownFrame.Visible = false
+                    end)
+                    
+                    if self.callback then
+                        task.spawn(function()
+                            self.callback(name, currentOption)
+                        end)
+                    end
+                end)
+            end
+            
+            local dropdownVisible = false
+            dropdownButton.MouseButton1Click:Connect(function()
+                playSound(clickSound)
+                dropdownVisible = not dropdownVisible
+                
+                if dropdownVisible then
+                    dropdownFrame.Visible = true
+                    dropdownFrame.Size = UDim2.new(0.4, -10, 0, 0)
+                    
+                    -- Position dropdown on top if there's not enough space below
+                    local screenPos = selector.AbsolutePosition
+                    local screenSize = selector.AbsoluteSize
+                    local dropdownSize = #options * 18
+                    
+                    if screenPos.Y + screenSize.Y + dropdownSize > workspace.CurrentCamera.ViewportSize.Y then
+                        dropdownFrame.Position = UDim2.new(0.6, 0, 0, -dropdownSize)
+                    else
+                        dropdownFrame.Position = UDim2.new(0.6, 0, 1, 0)
+                    end
+                    
+                    TweenService:Create(dropdownFrame, TweenInfo.new(0.2), {
+                        Size = UDim2.new(0.4, -10, 0, #options * 18)
+                    }):Play()
                 else
-                    conn = spawn(function()
-                        while running and wait(interval) do
-                            fn(interval)
+                    TweenService:Create(dropdownFrame, TweenInfo.new(0.2), {
+                        Size = UDim2.new(0.4, -10, 0, 0)
+                    }):Play()
+                    
+                    task.delay(0.2, function()
+                        if not dropdownVisible then
+                            dropdownFrame.Visible = false
                         end
                     end)
                 end
-                
-                table.insert(self.running[id].cleanupFns, function()
-                    running = false
-                    if typeof(conn) == "RBXScriptConnection" then
-                        conn:Disconnect()
-                    end
-                end)
-                
-                return {
-                    Stop = function()
-                        running = false
-                        if typeof(conn) == "RBXScriptConnection" then
-                            conn:Disconnect()
+            end)
+            
+            -- Close dropdown when clicking elsewhere
+            UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and dropdownVisible then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local dropdownPos = dropdownFrame.AbsolutePosition
+                    local dropdownSize = dropdownFrame.AbsoluteSize
+                    
+                    if mousePos.X < dropdownPos.X or mousePos.X > dropdownPos.X + dropdownSize.X or
+                       mousePos.Y < dropdownPos.Y or mousePos.Y > dropdownPos.Y + dropdownSize.Y then
+                        if mousePos.X < dropdownButton.AbsolutePosition.X or mousePos.X > dropdownButton.AbsolutePosition.X + dropdownButton.AbsoluteSize.X or
+                           mousePos.Y < dropdownButton.AbsolutePosition.Y or mousePos.Y > dropdownButton.AbsolutePosition.Y + dropdownButton.AbsoluteSize.Y then
+                            dropdownVisible = false
+                            TweenService:Create(dropdownFrame, TweenInfo.new(0.2), {
+                                Size = UDim2.new(0.4, -10, 0, 0)
+                            }):Play()
+                            
+                            task.delay(0.2, function()
+                                if not dropdownVisible then
+                                    dropdownFrame.Visible = false
+                                end
+                            end)
                         end
                     end
-                }
+                end
+            end)
+            
+            local selectorOrigSize = selector.Size
+            selector.MouseEnter:Connect(function()
+                playSound(hoverSound)
+                TweenService:Create(selector, TweenInfo.new(0.15), {
+                    Size = UDim2.new(selectorOrigSize.X.Scale * 1.02, selectorOrigSize.X.Offset * 1.02, 
+                                     selectorOrigSize.Y.Scale * 1.05, selectorOrigSize.Y.Offset * 1.05),
+                    BackgroundTransparency = 0.9
+                }):Play()
+                TweenService:Create(label, TweenInfo.new(0.15), {
+                    TextColor3 = Color3.fromRGB(220, 220, 220)
+                }):Play()
+            end)
+            
+            selector.MouseLeave:Connect(function()
+                TweenService:Create(selector, TweenInfo.new(0.15), {
+                    Size = selectorOrigSize,
+                    BackgroundTransparency = 1
+                }):Play()
+                TweenService:Create(label, TweenInfo.new(0.15), {
+                    TextColor3 = colors.white
+                }):Play()
+            end)
+            
+            table.insert(self.items, selector)
+            
+            local newSize = UDim2.new(1, 0, 0, #self.items * 22)
+            TweenService:Create(self.itemsContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = newSize
+            }):Play()
+            
+            if self.expanded then
+                local containerNewSize = UDim2.new(1, 0, 0, 26 + (#self.items * 22))
+                TweenService:Create(self.container, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Size = containerNewSize
+                }):Play()
             end
             
-            -- Run the script
-            local success, result = pcall(onFn)
-            if not success then
-                warn("Script execution error: " .. tostring(result))
-            end
-        end
-        
-        return true
-    end
-end
-
-function ZyncLib.scriptManager:StopScript(id)
-    local scriptData = self.running[id]
-    if scriptData then
-        -- Disconnect all connections
-        for _, conn in ipairs(scriptData.connections) do
-            if typeof(conn) == "RBXScriptConnection" and conn.Connected then
-                conn:Disconnect()
-            end
-        end
-        
-        -- Run cleanup functions
-        for _, fn in ipairs(scriptData.cleanupFns) do
-            pcall(fn)
-        end
-        
-        -- Run off script if provided
-        if scriptData.offFn and typeof(scriptData.offFn) == "function" then
-            pcall(scriptData.offFn)
-        end
-        
-        -- Remove from running scripts
-        self.running[id] = nil
-        return true
-    end
-    return false
-end
-
--- Handle selection (Enter/Space key)
-function ZyncLib:HandleSelect()
-    if self.state.selectedOption == 0 then
-        -- Toggle tab expansion
-        self:ToggleTab(self.state.selectedTab)
-        self:PlaySound("click")
-    else
-        -- Toggle option value
-        self:CycleOptionValue(self.state.selectedTab, self.state.selectedOption)
-    end
-    
-    self:Render()
-end
-
--- Add a new tab
-function ZyncLib:AddTab(name)
-    local tab = {
-        name = name,
-        expanded = (#self.tabs == 0), -- First tab is expanded by default
-        options = {}
-    }
-    
-    table.insert(self.tabs, tab)
-    
-    -- Update expanded tabs state
-    if #self.tabs == 1 then
-        self.state.expandedTabs[1] = true
-    else
-        self.state.expandedTabs[#self.tabs] = false
-    end
-    
-    -- Set as active tab if it's the first one
-    if #self.tabs == 1 then
-        self.activeTab = tab
-    end
-    
-    -- Render the UI
-    self:Render()
-    
-    -- Return the tab object for chaining
-    return {
-        -- Add toggle option
-        AddToggle = function(optName, settings)
-            settings = settings or {}
-            return self:AddToggle(#self.tabs, optName, settings)
-        end,
-        
-        -- Add dropdown option
-        AddDropdown = function(optName, settings)
-            settings = settings or {}
-            return self:AddDropdown(#self.tabs, optName, settings)
-        end,
-        
-        -- Add button option
-        AddButton = function(optName, settings)
-            settings = settings or {}
-            return self:AddButton(#self.tabs, optName, settings)
-        end
-    }
-end
-
--- Add toggle option to a tab
-function ZyncLib:AddToggle(tabIndex, name, settings)
-    settings = settings or {}
-    
-    local option = {
-        name = name,
-        type = "toggle",
-        value = settings.default or "« OFF",
-        values = {"« OFF", "« ON"},
-        keybind = settings.keybind,
-        scriptId = settings.scriptId or (self.tabs[tabIndex].name .. "_" .. name),
-        onScript = settings.onScript,
-        offScript = settings.offScript,
-        callback = settings.callback
-    }
-    
-    table.insert(self.tabs[tabIndex].options, option)
-    self:Render()
-    
-    return option
-end
-
--- Add dropdown option to a tab
-function ZyncLib:AddDropdown(tabIndex, name, settings)
-    settings = settings or {}
-    
-    local values = settings.values or {"Option 1", "Option 2", "Option 3"}
-    local option = {
-        name = name,
-        type = "dropdown",
-        value = settings.default or values[1],
-        values = values,
-        keybind = settings.keybind,
-        scriptId = settings.scriptId or (self.tabs[tabIndex].name .. "_" .. name),
-        onScript = settings.onScript,
-        offScript = settings.offScript,
-        callback = settings.callback
-    }
-    
-    table.insert(self.tabs[tabIndex].options, option)
-    self:Render()
-    
-    return option
-end
-
--- Add button option to a tab
-function ZyncLib:AddButton(tabIndex, name, settings)
-    settings = settings or {}
-    
-    local option = {
-        name = name,
-        type = "button",
-        keybind = settings.keybind,
-        scriptId = settings.scriptId or (self.tabs[tabIndex].name .. "_" .. name),
-        callback = settings.callback or function() end
-    }
-    
-    table.insert(self.tabs[tabIndex].options, option)
-    self:Render()
-    
-    return option
-end
-
--- Toggle tab expansion
-function ZyncLib:ToggleTab(tabIndex)
-    self.state.expandedTabs[tabIndex] = not self.state.expandedTabs[tabIndex]
-    self:Render()
-end
-
--- Toggle menu visibility
-function ZyncLib:ToggleVisibility()
-    self.state.menuEnabled = not self.state.menuEnabled
-    if self.state.menuEnabled then
-        self:PlaySound("toggleOn")
-    else
-        self:PlaySound("toggleOff")
-    end
-    self.screenGui.Enabled = self.state.menuEnabled
-end
-
--- Toggle minimized state
-function ZyncLib:ToggleMinimized()
-    self.state.minimized = not self.state.minimized
-    self:PlaySound("click")
-    self:Render()
-end
-
--- Navigate through menu
-function ZyncLib:Navigate(direction)
-    if self.state.minimized then return end
-    
-    -- Play navigation sound
-    self:PlaySound("nav")
-    
-    if self.state.selectedOption == 0 then
-        -- On tab header
-        if direction > 0 then
-            -- Move to first option if tab is expanded, or next tab
-            if self.state.expandedTabs[self.state.selectedTab] and #self.tabs[self.state.selectedTab].options > 0 then
-                self.state.selectedOption = 1
-            else
-                self.state.selectedTab = self.state.selectedTab % #self.tabs + 1
-            end
-        else
-            -- Move to previous tab
-            self.state.selectedTab = (self.state.selectedTab - 2) % #self.tabs + 1
-        end
-    else
-        -- On option
-        if direction > 0 then
-            -- Move to next option or next tab
-            if self.state.selectedOption < #self.tabs[self.state.selectedTab].options then
-                self.state.selectedOption = self.state.selectedOption + 1
-            else
-                self.state.selectedTab = self.state.selectedTab % #self.tabs + 1
-                self.state.selectedOption = 0
-            end
-        else
-            -- Move to previous option or tab header
-            if self.state.selectedOption > 1 then
-                self.state.selectedOption = self.state.selectedOption - 1
-            else
-                self.state.selectedOption = 0
-            end
-        end
-    end
-    
-    self:Render()
-end
-
--- Cycle option value
-function ZyncLib:CycleOptionValue(tabIndex, optionIndex)
-    local option = self.tabs[tabIndex].options[optionIndex]
-    
-    if option.type == "button" then
-        -- Execute button callback
-        if option.callback then
-            option.callback()
-        end
-        self:PlaySound("click")
-        return
-    end
-    
-    -- For toggles and dropdowns
-    if option.values then
-        -- Find current value index
-        local currentIndex = 1
-        for i, val in ipairs(option.values) do
-            if val == option.value then
-                currentIndex = i
-                break
-            end
-        end
-        
-        -- Cycle to next value
-        currentIndex = currentIndex % #option.values + 1
-        option.value = option.values[currentIndex]
-        
-        -- Handle script execution based on value
-        if option.scriptId and option.onScript then
-            local isOn = string.find(option.value, "ON") ~= nil or 
-                        (option.value ~= "« OFF" and option.value ~= "«OFF»")
+            task.spawn(function()
+                lib:UpdateSectionPositions(true)
+            end)
             
-            if isOn then
-                self.scriptManager:RunScript(option.scriptId, option.onScript, option.offScript)
-                self:PlaySound("toggleOn")
+            return {
+                SetOption = function(option)
+                    if table.find(options, option) then
+                        currentOption = option
+                        dropdownButton.Text = option
+                        return true
+                    end
+                    return false
+                end,
+                GetOption = function()
+                    return currentOption
+                end
+            }
+        end
+        
+        function sectionData:AddButton(name, callback)
+            local button = Instance.new("Frame")
+            button.Name = name:gsub("[^%w]", "") .. "Button"
+            button.Size = UDim2.new(1, 0, 0, 22)
+            button.Position = UDim2.new(0, 0, 0, #self.items * 22)
+            button.BackgroundTransparency = 1
+            button.Parent = self.itemsContainer
+            
+            local buttonElement = Instance.new("TextButton")
+            buttonElement.Name = "ButtonElement"
+            buttonElement.Size = UDim2.new(0.8, 0, 0, 18)
+            buttonElement.Position = UDim2.new(0.1, 0, 0.5, -9)
+            buttonElement.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            buttonElement.BorderSizePixel = 0
+            buttonElement.TextColor3 = colors.white
+            buttonElement.Font = Enum.Font.RobotoMono
+            buttonElement.TextSize = 14
+            buttonElement.Text = name
+            buttonElement.TextTransparency = 1
+            buttonElement.Parent = button
+            
+            local UICornerButton = Instance.new("UICorner")
+            UICornerButton.CornerRadius = UDim.new(0, 2)
+            UICornerButton.Parent = buttonElement
+            
+            buttonElement.MouseEnter:Connect(function()
+                playSound(hoverSound)
+                TweenService:Create(buttonElement, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+                    TextColor3 = Color3.fromRGB(220, 220, 220)
+                }):Play()
+            end)
+            
+            buttonElement.MouseLeave:Connect(function()
+                TweenService:Create(buttonElement, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                    TextColor3 = colors.white
+                }):Play()
+            end)
+            
+            buttonElement.MouseButton1Down:Connect(function()
+                playSound(clickSound)
+                TweenService:Create(buttonElement, TweenInfo.new(0.1), {
+                    Size = UDim2.new(0.78, 0, 0, 17)
+                }):Play()
+            end)
+            
+            buttonElement.MouseButton1Up:Connect(function()
+                TweenService:Create(buttonElement, TweenInfo.new(0.1), {
+                    Size = UDim2.new(0.8, 0, 0, 18)
+                }):Play()
+            end)
+            
+            buttonElement.MouseButton1Click:Connect(function()
+                if callback then
+                    task.spawn(function()
+                        callback()
+                    end)
+                end
+            end)
+            
+            table.insert(self.items, button)
+            
+            local newSize = UDim2.new(1, 0, 0, #self.items * 22)
+            TweenService:Create(self.itemsContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = newSize
+            }):Play()
+            
+            if self.expanded then
+                local containerNewSize = UDim2.new(1, 0, 0, 26 + (#self.items * 22))
+                TweenService:Create(self.container, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Size = containerNewSize
+                }):Play()
+            end
+            
+            task.spawn(function()
+                lib:UpdateSectionPositions(true)
+            end)
+            
+            return button
+        end
+        
+        function sectionData:SetCallback(callback)
+            self.callback = callback
+        end
+        
+        table.insert(self.sections, sectionData)
+        return sectionData
+    end
+    
+    function lib:UpdateSectionPositions(animate)
+        local yPos = 5
+        local totalHeight = 5
+        for i, section in ipairs(self.sections) do
+            local targetPos = UDim2.new(0, 0, 0, yPos)
+            if animate then
+                TweenService:Create(section.container, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                    Position = targetPos
+                }):Play()
             else
-                self.scriptManager:StopScript(option.scriptId)
-                self:PlaySound("toggleOff")
+                section.container.Position = targetPos
             end
-        else
-            -- If no script, just play the toggle sound
-            if string.find(option.value or "", "ON") ~= nil then
-                self:PlaySound("toggleOn")
+            local sectionHeight
+            if section.expanded then
+                sectionHeight = 26 + (#section.items * 22)
             else
-                self:PlaySound("toggleOff")
+                sectionHeight = 25
             end
+            yPos = yPos + sectionHeight
+            totalHeight = totalHeight + sectionHeight
         end
         
-        -- Call callback if exists
-        if option.callback then
-            option.callback(option.value)
-        end
-    end
-    
-    self:Render()
-end
-
--- Open keybind dropdown
-function ZyncLib:OpenKeybindDropdown(tabIndex, optionIndex)
-    -- Clear dropdown
-    for _, child in pairs(self.keybindDropdown:GetChildren()) do
-        child:Destroy()
-    end
-    
-    local option = self.tabs[tabIndex].options[optionIndex]
-    local optionFrame = self.menuContainer:FindFirstChild("OptionFrame_" .. tabIndex .. "_" .. optionIndex)
-    
-    if not optionFrame then return end
-    
-    -- Position dropdown near option
-    local absPos = optionFrame.AbsolutePosition
-    self.keybindDropdown.Position = UDim2.new(0, absPos.X + optionFrame.AbsoluteSize.X - 50, 0, absPos.Y + 25)
-    
-    -- Create dropdown title
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0, 20)
-    title.Font = Enum.Font.RobotoMono
-    title.Text = "Select Keybind"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 14
-    title.ZIndex = 1101
-    title.Parent = self.keybindDropdown
-    
-    -- Create keybind options container
-    local listFrame = Instance.new("Frame")
-    listFrame.Name = "ListFrame"
-    listFrame.BackgroundTransparency = 1
-    listFrame.Position = UDim2.new(0, 0, 0, 20)
-    listFrame.Size = UDim2.new(1, 0, 1, -20)
-    listFrame.ZIndex = 1101
-    listFrame.Parent = self.keybindDropdown
-    
-    -- Create keybind options
-    for i, key in ipairs(self.commonKeybinds) do
-        local item = Instance.new("TextButton")
-        item.Name = "Key_" .. key
-        item.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        item.BorderSizePixel = 0
-        item.Position = UDim2.new(0, 0, 0, (i-1) * 20)
-        item.Size = UDim2.new(1, 0, 0, 20)
-        item.Font = Enum.Font.RobotoMono
-        item.Text = key
-        item.TextColor3 = Color3.fromRGB(255, 255, 255)
-        item.TextSize = 14
-        item.ZIndex = 1101
-        
-        -- Highlight current keybind
-        if option.keybind == key then
-            item.BackgroundColor3 = HIGHLIGHT_COLOR
-        end
-        
-        -- Keybind selection handling
-        item.MouseButton1Click:Connect(function()
-            option.keybind = key
-            self:PlaySound("click")
-            self.keybindDropdown.Visible = false
-            self.state.keybindOpen = false
-            self:Render()
-        end)
-        
-        -- Hover effect for keybind options
-        item.MouseEnter:Connect(function()
-            if self.state.lastHoveredElement ~= item then
-                self:PlaySound("hover")
-                self.state.lastHoveredElement = item
-                
-                -- Add slight highlight on hover
-                if option.keybind ~= key then
-                    item.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                end
-            end
-        end)
-        
-        item.MouseLeave:Connect(function()
-            -- Reset background when not hovering
-            if option.keybind ~= key then
-                item.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            end
-        end)
-        
-        item.Parent = listFrame
-    end
-    
-    -- Set dropdown size and show
-    self.keybindDropdown.Size = UDim2.new(0, 120, 0, 20 + (#self.commonKeybinds * 20))
-    self.keybindDropdown.Visible = true
-    self.state.keybindOpen = true
-end
-
--- Render the UI
-function ZyncLib:Render()
-    -- Clear menu container
-    for _, child in pairs(self.menuContainer:GetChildren()) do
-        child:Destroy()
-    end
-    
-    -- Close keybind dropdown if open
-    if self.state.keybindOpen then
-        self.keybindDropdown.Visible = false
-        self.state.keybindOpen = false
-    end
-    
-    -- Handle minimized state
-    if self.state.minimized then
-        self.mainFrame.Size = UDim2.new(0, self.width, 0, 25)
-        self.menuContainer.Visible = false
-        return
-    else
-        self.menuContainer.Visible = true
-    end
-    
-    -- Create menu items
-    local yOffset = 0
-    
-    for tabIndex, tab in ipairs(self.tabs) do
-        -- Create tab header with animated arrow
-        local tabFrame = Instance.new("Frame")
-        tabFrame.Name = "TabFrame_" .. tabIndex
-        tabFrame.BackgroundTransparency = 1
-        tabFrame.Position = UDim2.new(0, 0, 0, yOffset)
-        tabFrame.Size = UDim2.new(1, 0, 0, 20)
-        tabFrame.ZIndex = 1001
-        tabFrame.Parent = self.menuContainer
-        
-        local arrowContainer = Instance.new("Frame")
-        arrowContainer.Name = "ArrowContainer"
-        arrowContainer.BackgroundTransparency = 1
-        arrowContainer.Size = UDim2.new(0, 20, 0, 20)
-        arrowContainer.ZIndex = 1002
-        arrowContainer.Parent = tabFrame
-        
-        local arrow = Instance.new("TextLabel")
-        arrow.Name = "Arrow"
-        arrow.BackgroundTransparency = 1
-        arrow.Position = UDim2.new(0.5, 0, 0.5, 0)
-        arrow.Size = UDim2.new(0, 20, 0, 20)
-        arrow.AnchorPoint = Vector2.new(0.5, 0.5)
-        arrow.Font = Enum.Font.RobotoMono
-        arrow.Text = "►" -- Default right arrow (when closed)
-        arrow.TextColor3 = self.state.expandedTabs[tabIndex] and HIGHLIGHT_COLOR or COLOR3.new(1,1,1)
-        arrow.TextSize = 14
-        arrow.Rotation = self.state.expandedTabs[tabIndex] and 90 or 0 -- Rotated when expanded (pointing down)
-        arrow.ZIndex = 1003
-        arrow.Parent = arrowContainer
-        
-        local tabHeader = Instance.new("TextLabel")
-        tabHeader.Name = "Header"
-        tabHeader.BackgroundTransparency = 1
-        tabHeader.Position = UDim2.new(0, 20, 0, 0)
-        tabHeader.Size = UDim2.new(1, -20, 1, 0)
-        tabHeader.Font = Enum.Font.RobotoMono
-        tabHeader.ZIndex = 1002
-        
-        -- Format tab header based on selection
-        if self.state.selectedTab == tabIndex and self.state.selectedOption == 0 then
-            tabHeader.Text = "_« " .. tab.name .. " _"
-            tabHeader.TextColor3 = HIGHLIGHT_COLOR
-            arrow.TextColor3 = HIGHLIGHT_COLOR
+        -- Auto-scale UI based on content height
+        local targetSize = UDim2.new(0, 250, 0, math.max(80, totalHeight + 30))
+        if animate then
+            TweenService:Create(Background, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Size = targetSize
+            }):Play()
         else
-            tabHeader.Text = "_« " .. tab.name .. " _"
-            tabHeader.TextColor3 = DEFAULT_TEXT_COLOR
+            Background.Size = targetSize
+        end
+    end
+    
+    function lib:Show()
+        playSound(startupSound)
+        TweenService:Create(Background, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0
+        }):Play()
+        TweenService:Create(ZyncLabel, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            TextTransparency = 0
+        }):Play()
+        TweenService:Create(PmoLabel, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            TextTransparency = 0
+        }):Play()
+        if Logo then
+            TweenService:Create(Logo, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                ImageTransparency = 0
+            }):Play()
         end
         
-        tabHeader.TextSize = 16
-        tabHeader.TextXAlignment = Enum.TextXAlignment.Left
-        tabHeader.Parent = tabFrame
-        
-        -- Tab Click handling
-        tabFrame.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                self.state.selectedTab = tabIndex
-                self.state.selectedOption = 0
-                self.state.expandedTabs[tabIndex] = not self.state.expandedTabs[tabIndex]
-                self:PlaySound("click")
-                self:Render()
-            end
-        end)
-        
-        -- Tab hover sound
-        tabFrame.MouseEnter:Connect(function()
-            if self.state.lastHoveredElement ~= tabFrame then
-                self:PlaySound("hover")
-                self.state.lastHoveredElement = tabFrame
-            end
-        end)
-        
-        yOffset = yOffset + 20
-        
-        -- Add options if tab is expanded
-        if self.state.expandedTabs[tabIndex] then
-            for optionIndex, option in ipairs(tab.options) do
-                local optionFrame = Instance.new("Frame")
-                optionFrame.Name = "OptionFrame_" .. tabIndex .. "_" .. optionIndex
-                optionFrame.BackgroundTransparency = 1
-                optionFrame.Position = UDim2.new(0, 20, 0, yOffset)
-                optionFrame.Size = UDim2.new(1, -20, 0, 20)
-                optionFrame.ZIndex = 1001
-                optionFrame.Parent = self.menuContainer
-                
-                local optionLabel = Instance.new("TextLabel")
-                optionLabel.Name = "OptionLabel"
-                optionLabel.BackgroundTransparency = 1
-                optionLabel.Size = UDim2.new(0.5, 0, 1, 0)
-                optionLabel.Font = Enum.Font.RobotoMono
-                optionLabel.ZIndex = 1001
-                
-                -- Check if this option is selected
-                local isSelected = (self.state.selectedTab == tabIndex and self.state.selectedOption == optionIndex)
-                
-                if isSelected then
-                    optionLabel.Text = "» " .. option.name
-                    optionLabel.TextColor3 = HIGHLIGHT_COLOR
-                else
-                    optionLabel.Text = option.name
-                    optionLabel.TextColor3 = UNSELECTED_COLOR
+        task.delay(0.3, function()
+            for i, section in ipairs(lib.sections) do
+                local header = section.container:FindFirstChild("Header")
+                if header then
+                    TweenService:Create(header, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {
+                        TextTransparency = 0
+                    }):Play()
                 end
-                
-                optionLabel.TextSize = 14
-                optionLabel.TextXAlignment = Enum.TextXAlignment.Left
-                optionLabel.Parent = optionFrame
-                
-                -- For options with values (toggles, dropdowns)
-                if option.type ~= "button" then
-                    local optionValue = Instance.new("TextLabel")
-                    optionValue.Name = "OptionValue"
-                    optionValue.BackgroundTransparency = 1
-                    optionValue.Position = UDim2.new(0.5, 0, 0, 0)
-                    optionValue.Size = UDim2.new(0.3, 0, 1, 0)
-                    optionValue.Font = Enum.Font.RobotoMono
-                    optionValue.Text = option.value
-                    optionValue.ZIndex = 1001
-                    
-                    if isSelected then
-                        optionValue.TextColor3 = HIGHLIGHT_COLOR
-                    else
-                        optionValue.TextColor3 = UNSELECTED_COLOR
-                    end
-                    
-                    optionValue.TextSize = 14
-                    optionValue.TextXAlignment = Enum.TextXAlignment.Left
-                    optionValue.Parent = optionFrame
-                end
-                
-                -- For button type
-                if option.type == "button" then
-                    -- Create a button indicator
-                    local buttonIndicator = Instance.new("TextLabel")
-                    buttonIndicator.Name = "ButtonIndicator"
-                    buttonIndicator.BackgroundTransparency = 1
-                    buttonIndicator.Position = UDim2.new(0.5, 0, 0, 0)
-                    buttonIndicator.Size = UDim2.new(0.3, 0, 1, 0)
-                    buttonIndicator.Font = Enum.Font.RobotoMono
-                    buttonIndicator.Text = "[ CLICK ]"
-                    buttonIndicator.ZIndex = 1001
-                    
-                    if isSelected then
-                        buttonIndicator.TextColor3 = HIGHLIGHT_COLOR
-                    else
-                        buttonIndicator.TextColor3 = UNSELECTED_COLOR
-                    end
-                    
-                    buttonIndicator.TextSize = 14
-                    buttonIndicator.TextXAlignment = Enum.TextXAlignment.Left
-                    buttonIndicator.Parent = optionFrame
-                end
-                
-                -- Add keybind indicator if a keybind is set
-                if option.keybind then
-                    local keybindLabel = Instance.new("TextLabel")
-                    keybindLabel.Name = "KeybindLabel"
-                    keybindLabel.BackgroundTransparency = 1
-                    keybindLabel.Position = UDim2.new(0.8, 0, 0, 0)
-                    keybindLabel.Size = UDim2.new(0.2, 0, 1, 0)
-                    keybindLabel.Font = Enum.Font.RobotoMono
-                    keybindLabel.Text = "[" .. option.keybind .. "]"
-                    keybindLabel.ZIndex = 1001
-                    
-                    if isSelected then
-                        keybindLabel.TextColor3 = HIGHLIGHT_COLOR
-                    else
-                        keybindLabel.TextColor3 = KEYBIND_COLOR
-                    end
-                    
-                    keybindLabel.TextSize = 12
-                    keybindLabel.TextXAlignment = Enum.TextXAlignment.Right
-                    keybindLabel.Parent = optionFrame
-                end
-                
-                -- Option click handling
-                optionFrame.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        self.state.selectedTab = tabIndex
-                        self.state.selectedOption = optionIndex
-                        self:CycleOptionValue(tabIndex, optionIndex)
-                        self:Render()
-                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 and option.keybind then
-                        self.state.selectedTab = tabIndex
-                        self.state.selectedOption = optionIndex
-                        self:PlaySound("click")
-                        self:OpenKeybindDropdown(tabIndex, optionIndex)
-                        self:Render()
+                task.delay(0.1 * i, function()
+                    for _, child in pairs(section.container:GetDescendants()) do
+                        if child.Name == "Separator" then
+                            TweenService:Create(child, TweenInfo.new(0.3), {
+                                BackgroundTransparency = 0
+                            }):Play()
+                        end
+                        if child:IsA("TextLabel") and child.Name ~= "Header" then
+                            TweenService:Create(child, TweenInfo.new(0.3), {
+                                TextTransparency = 0
+                            }):Play()
+                        end
+                        if child:IsA("TextButton") and child:IsDescendantOf(section.itemsContainer) then
+                            TweenService:Create(child, TweenInfo.new(0.3), {
+                                TextTransparency = 0
+                            }):Play()
+                        end
                     end
                 end)
-                
-                -- Option hover sound
-                optionFrame.MouseEnter:Connect(function()
-                    if self.state.lastHoveredElement ~= optionFrame then
-                        self:PlaySound("hover")
-                        self.state.lastHoveredElement = optionFrame
-                    end
-                end)
-                
-                yOffset = yOffset + 20
             end
-        end
+        end)
+        
+        self:UpdateSectionPositions(false)
     end
     
-    -- Update main frame size based on content
-    if not self.state.minimized then
-        local newHeight = math.max(yOffset + 30, 60) -- +30 for title area, minimum of 60px
-        self.mainFrame.Size = UDim2.new(0, self.width, 0, newHeight)
-        self.glowContainer.Size = UDim2.new(0, self.width + 8, 0, newHeight + 8)
+    function lib:Destroy()
+        if toggleConnection then
+            toggleConnection:Disconnect()
+        end
+        
+        TweenService:Create(Background, TweenInfo.new(0.5), {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 250, 0, 0)
+        }):Play()
+        
+        task.delay(0.5, function()
+            ScreenGui:Destroy()
+        end)
     end
+    
+    return lib
 end
 
--- Return the library
 return ZyncLib
