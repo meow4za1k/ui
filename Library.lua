@@ -479,8 +479,8 @@ function SaturnLib:MakeWindow(WindowConfig)
 	WindowConfig.IntroText = WindowConfig.IntroText or "Saturn Library"
 	WindowConfig.CloseCallback = WindowConfig.CloseCallback or function() end
 	WindowConfig.ShowIcon = WindowConfig.ShowIcon or false
-	WindowConfig.Icon = WindowConfig.Icon or "rbxassetid://122758730819144"
-	WindowConfig.IntroIcon = WindowConfig.IntroIcon or "rbxassetid://122758730819144"
+	WindowConfig.Icon = WindowConfig.Icon or "rbxassetid://15861195995"
+	WindowConfig.IntroIcon = WindowConfig.IntroIcon or "rbxassetid://15861195995"
 	SaturnLib.Folder = WindowConfig.ConfigFolder
 	SaturnLib.SaveCfg = WindowConfig.SaveConfig
 
