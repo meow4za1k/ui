@@ -1,4 +1,3 @@
-loadstring(game:Httpget("https://raw.githubusercontent.com/meow4za1k/ui/refs/heads/main/Introduction"))()
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
